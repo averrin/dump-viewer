@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>ZS Dump View</title>
+    <script src="/js/jquery.min.js" charset="utf-8"></script>
+    <link rel="stylesheet" href="/css/bootstrap.min.css" media="screen" title="no title" charset="utf-8">
+    <link rel="stylesheet" href="/css/bootstrap-sortable.min.css" media="screen" title="no title" charset="utf-8">
+    <script src="/js/bootstrap.min.js" charset="utf-8"></script>
+    <script src="/js/bootstrap-sortable.min.js" charset="utf-8"></script>
+    <script src="/js/bootstrap3-typeahead.min.js" charset="utf-8"></script>
+    <script src="/js/moment.min.js" charset="utf-8"></script>
+    <style>
+        td,
+        th {
+            text-align: center;
+            vertical-align: middle !important;
+        }
+        .code {
+            background-color: none;
+            color: #000;
+        }
+        html {
+            position: relative;
+            min-height: 100%;
+        }
+        body {
+            /* Margin bottom by footer height */
+            margin-bottom: 60px;
+        }
+        .footer {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            /* Set the fixed height of the footer here */
+            height: 60px;
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+    <form class="form-inline" style="margin-top: 10px;" action=".">
+        <label for="ip">Box IP: </label>
+        <input type="text" name="ip" id="ip" class="form-input" autocomplete="off">
+        <button type="submit" name="send" class="btn btn-primary" id="send">Get dumps</button>
+        <button class="btn btn-primary" id="screen">Get screenshot</button>
+        <a href="/upload" class="btn btn-primary">List uploaded</a>
+    </form>
+    <button style="float: right;margin-top: -32px;" name="upload" class="btn btn-primary" id="upload" data-toggle="modal" data-target="#uploadModal">Upload Dump</button>
+    <div style="margin-top: 10px;">
+        <table class="table table-bordered table-striped table-hover sortable">
+          {%if not files%}
+            <thead>
+                <tr>
+                    <th data-defaultsort="desc">Time</th>
+                    <th>Box</th>
+                    <th>Component</th>
+                    <th>ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="4">Specify box IP and press "Get dumps"...</td>
+                </tr>
+            </tbody>
+        {%else%}
+            <thead>
+                <tr>
+                    <th>ID</th>
+                </tr>
+            </thead>
+            <tbody>
+              {%for f in files%}
+                <tr>
+                    <td><a href="/dump/{{f}}">{{f}}</a></td>
+                </tr>
+                {%endfor%}
+            </tbody>
+        {%endif%}
+        </table>
+    </div>
+</div>
+<footer class="footer">
+    <div class="container">
+        <p class="text-muted" style="margin: 20px auto">v{{VERSION}} | Zodiac, 2016</p>
+    </div>
+</footer>
+
+    <div class="modal fade bs-example-modal-lg" id="dump-modal">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    <h4 class="modal-title">Parsed dump</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="code" id="parsed-dump"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+            <!-- /.modal-content -->
+        </div>
+        <!-- /.modal-dialog -->
+    </div>
+    <!-- /.modal -->
+
+    <div class="modal fade" id="uploadModal" tabindex="-1" role="dialog">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel">Modal title</h4>
+          </div>
+          <div class="modal-body">
+            <form class="form-inline" style="margin-top: 10px;" action="/upload" method="POST" id="uploadForm"
+            enctype='multipart/form-data'>
+              <div class="form-group">
+                <label for="component">Component: </label>
+                <input type="text" name="component" id="component" class="form-input" autocomplete="off" value="dvbs">
+              </div>
+              <div class="form-group">
+                <input type="file" id="file" name="file">
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="send_file">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#ip').typeahead({
+                source: JSON.parse(localStorage.getItem('ips'))
+            })
+            {% if IP %}
+                $('#ip').val('{{IP}}');
+                getList();
+            {% endif %}
+            $('#send_file').on('click', () => {
+              $('#uploadForm').submit();
+              $('#uploadModal').modal('hide');
+            });
+            $('#screen').on('click', e => {
+              e.preventDefault();
+              if ($('#ip').val() == '') {
+                return alert('Specify IP');
+              }
+              location = `/box/${$('#ip').val()}/screenshot`;
+            });
+        })
+        function getList(){
+          if ($('#ip').val() == '') {
+            return alert('Specify IP');
+          }
+            var $this = $('#send');
+            $this.html('Loading...');
+            $this.prop('disabled', true);
+            $.post('{% if IP %}../{%endif%}list', {
+                ip: $('#ip').val()
+            }, function(data) {
+                if (data.error) {
+                    $this.html('Get dumps');
+                    $this.prop('disabled', false);
+                    return alert(data.error);
+                }
+                if (data.dumps.length > 0) {
+                    $('tbody').html('');
+                    var ips;
+                    if (localStorage.getItem('ips')) {
+                        ips = JSON.parse(localStorage.getItem('ips'));
+                        if (ips.indexOf($('#ip').val())) {
+                            ips.push($('#ip').val());
+                        }
+                    } else {
+                        ips = [];
+                        ips.push($('#ip').val());
+                    }
+                    localStorage.setItem('ips', JSON.stringify(ips));
+                }
+                data.dumps.forEach(function(e) {
+                    var tr = $('<tr></tr>');
+                    tr.append($('<td data-value="' + moment(e['Time'], "DD.MM.YYYY HH:mm:ss").format('X') + '">' + e['Time'] + '</td>'))
+                    tr.append($('<td>' + $('#ip').val() + '</td>'))
+                    tr.append($('<td>' + e['Component'] + '</td>'))
+                    tr.append($('<td><a href="{{IP}}/dump/' + e['Component'] + '/' + e['ID'] + '">' + e['ID'] + '</a></td>'))
+                    $('tbody').append(tr);
+                })
+                $this.html('Get dumps');
+                $this.prop('disabled', false);
+                $.bootstrapSortable();
+            }).fail(function() {
+                $this.html('Get dumps');
+                $this.prop('disabled', false);
+                return alert('Fetching error.');
+            })
+        }
+
+        $('#send').on('click', function(ev) {
+            ev.preventDefault();
+            window.location = '{% if IP %}../{%endif%}box/' + $('#ip').val();
+        })
+    </script>
+</body>
+
+</html>
