@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"image"
-	"image/color"
-	"image/draw"
 	"image/jpeg"
 	"io"
 	"io/ioutil"
@@ -51,6 +49,8 @@ func main() {
 	iris.Post("/list", list)
 	iris.Post("/upload", upload)
 	iris.Get("/upload", uploadList)
+	iris.Get("/box/:ip/shell", shell)
+	iris.Post("/box/:ip/shell", sendCmd)
 	iris.Listen("0.0.0.0:9900")
 }
 
@@ -60,7 +60,31 @@ type Form struct {
 }
 
 func index(ctx *iris.Context) {
-	ctx.Render("index.html", map[string]interface{}{"VERSION": VERSION})
+	ctx.Render("shell.html", map[string]interface{}{"VERSION": VERSION})
+}
+
+func shell(ctx *iris.Context) {
+	ip := ctx.Param("ip")
+	ctx.Render("shell.html", map[string]interface{}{
+		"VERSION": VERSION,
+		"IP":      ip,
+	})
+}
+
+func sendCmd(ctx *iris.Context) {
+	ip := ctx.Param("ip")
+	// cmd := ctx.Get("cmd")
+	cmd := ctx.FormValue("cmd")
+	log.Println(ip, cmd)
+	conn, data, _ := sendCommand(ip, string(cmd))
+	defer conn.Close()
+	result, _ := ioutil.ReadAll(data)
+	ctx.Render("shell.html", map[string]interface{}{
+		"VERSION": VERSION,
+		"IP":      ip,
+		"result":  string(result),
+		"cmd":     string(cmd),
+	})
 }
 
 func uploadList(ctx *iris.Context) {
@@ -93,25 +117,53 @@ func dump(ctx *iris.Context) {
 
 func getScreenshot(ctx *iris.Context) {
 	ip := ctx.Param("ip")
+	// sendCommand(ip, "resdiag pwr")
+	// time.Sleep(3 * time.Second)
+	// sendCommand(ip, "resdiag g")
+	// time.Sleep(5 * time.Second)
 	conn, data, err := sendCommand(ip, "ScreenShot")
 	defer conn.Close()
 	data.Discard(17)
 	archive, err := zlib.NewReader(data)
 	log.Println(archive, err)
 	defer archive.Close()
-	img := image.NewRGBA(image.Rect(0, 0, 720, 480))
 	pixelsRaw, _ := ioutil.ReadAll(archive)
-	pixels := bytes.NewBuffer(pixelsRaw)
+	pixelsRaw = append([]byte{0}, pixelsRaw...)
+	log.Println(err)
+	go func() {
+		f, _ := os.OpenFile("dump.bin", os.O_WRONLY|os.O_CREATE, 0666)
+		f.Write(pixelsRaw)
+		defer f.Close()
+	}()
 
-	for x := 0; x < 720; x++ {
-		for y := 0; y < 480; y++ {
-			r, _ := pixels.ReadByte()
-			g, _ := pixels.ReadByte()
-			b, _ := pixels.ReadByte()
-			a, _ := pixels.ReadByte()
-			draw.Draw(img, image.Rect(x, y, 1, 1), &image.Uniform{color.RGBA{r, g, b, a}}, image.ZP, draw.Src)
+	pix := make([]byte, 4)
+	i := 0
+	for n, p := range pixelsRaw {
+		switch {
+		case i == 0:
+			pix[3] = p
+		case i == 1:
+			pix[2] = p
+		case i == 2:
+			pix[1] = p
+		case i == 3:
+			pix[0] = p
+		}
+		if i == 3 {
+			i = 0
+			pixelsRaw[n-3] = pix[0]
+			pixelsRaw[n-2] = pix[1]
+			pixelsRaw[n-1] = pix[2]
+			pixelsRaw[n] = pix[3]
+		} else {
+			i++
 		}
 	}
+	// log.Println(pixelsRaw[:4])
+	pixels := bytes.NewBuffer(pixelsRaw)
+
+	img := image.NewRGBA(image.Rect(0, 0, 720, 480))
+	copy(img.Pix, pixels.Bytes())
 	ret := new(bytes.Buffer)
 	jpeg.Encode(ret, img, nil)
 	ctx.ServeContent(bytes.NewReader(ret.Bytes()), "screen.png", time.Now(), false)

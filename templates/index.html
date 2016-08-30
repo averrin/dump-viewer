@@ -48,6 +48,7 @@
         <button type="submit" name="send" class="btn btn-primary" id="send">Get dumps</button>
         <button class="btn btn-primary" id="screen">Get screenshot</button>
         <a href="/upload" class="btn btn-primary">List uploaded</a>
+        <button class="btn btn-primary" id="shell">Shell</button>
     </form>
     <button style="float: right;margin-top: -32px;" name="upload" class="btn btn-primary" id="upload" data-toggle="modal" data-target="#uploadModal">Upload Dump</button>
     <div style="margin-top: 10px;">
@@ -157,6 +158,15 @@
                 return alert('Specify IP');
               }
               location = `/box/${$('#ip').val()}/screenshot`;
+            });
+            $('#shell').on('click', e => {
+              e.preventDefault();
+              if ($('#ip').val() == '') {
+                return alert('Specify IP');
+              }
+              url = `/box/${$('#ip').val()}/shell`;
+              var win = window.open(url, '_blank');
+              win.focus();
             });
         })
         function getList(){
