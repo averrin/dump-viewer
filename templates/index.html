@@ -43,14 +43,14 @@
 <body>
     <div class="container">
     <form class="form-inline" style="margin-top: 10px;" action=".">
-        <label for="ip">Box IP: </label>
-        <input type="text" name="ip" id="ip" class="form-input" autocomplete="off">
-        <button type="submit" name="send" class="btn btn-primary" id="send">Get dumps</button>
-        <button class="btn btn-primary" id="screen">Get screenshot</button>
-        <a href="/upload" class="btn btn-primary">List uploaded</a>
-        <button class="btn btn-primary" id="shell">Shell</button>
+      <label for="ip">Box IP: </label>
+      <input type="text" name="ip" id="ip" class="form-input" autocomplete="off">
+      <button type="submit" name="send" class="btn btn-primary" id="send">Get dumps</button>
+      <button class="btn btn-primary" id="screen">Get screenshot</button>
+      <button class="btn btn-primary" id="shell">Shell</button>
+      <button name="upload" class="btn btn-primary" id="upload" data-toggle="modal" data-target="#uploadModal">Upload Dump</button>
+      <a href="/upload" class="btn btn-primary">List uploaded</a>
     </form>
-    <button style="float: right;margin-top: -32px;" name="upload" class="btn btn-primary" id="upload" data-toggle="modal" data-target="#uploadModal">Upload Dump</button>
     <div style="margin-top: 10px;">
         <table class="table table-bordered table-striped table-hover sortable">
           {%if not files%}
@@ -149,6 +149,7 @@
                 getList();
             {% endif %}
             $('#send_file').on('click', () => {
+              e.preventDefault();
               $('#uploadForm').submit();
               $('#uploadModal').modal('hide');
             });

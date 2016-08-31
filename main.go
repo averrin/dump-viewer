@@ -27,6 +27,7 @@ import (
 var ws iris.WebsocketServer
 var CMDPORT = 65434
 var VERSION string
+var sokets []iris.WebsocketConnection
 
 func main() {
 	viper.SetConfigType("yaml")
@@ -50,7 +51,20 @@ func main() {
 	iris.Post("/upload", upload)
 	iris.Get("/upload", uploadList)
 	iris.Get("/box/:ip/shell", shell)
-	iris.Post("/box/:ip/shell", sendCmd)
+	// iris.Post("/box/:ip/shell", sendCmd)
+
+	iris.Config.Websocket.Endpoint = "/ws"
+	ws = iris.Websocket
+	ws.OnConnection(func(c iris.WebsocketConnection) {
+		sokets = append(sokets, c)
+		c.To(iris.All).Emit("out", []byte(">> Send command\n"))
+		c.On("in", func(message string) {
+			cmd := strings.Split(message, "//")
+			c.To(iris.All).Emit("out",
+				[]byte(fmt.Sprintf(">> %s\n", sendCmd(cmd[0], cmd[1]))))
+		})
+	})
+
 	iris.Listen("0.0.0.0:9900")
 }
 
@@ -68,23 +82,15 @@ func shell(ctx *iris.Context) {
 	ctx.Render("shell.html", map[string]interface{}{
 		"VERSION": VERSION,
 		"IP":      ip,
+		"host":    ctx.HostString(),
 	})
 }
 
-func sendCmd(ctx *iris.Context) {
-	ip := ctx.Param("ip")
-	// cmd := ctx.Get("cmd")
-	cmd := ctx.FormValue("cmd")
-	log.Println(ip, cmd)
-	conn, data, _ := sendCommand(ip, string(cmd))
+func sendCmd(ip string, cmd string) string {
+	conn, data, _ := sendCommand(ip, cmd)
 	defer conn.Close()
 	result, _ := ioutil.ReadAll(data)
-	ctx.Render("shell.html", map[string]interface{}{
-		"VERSION": VERSION,
-		"IP":      ip,
-		"result":  string(result),
-		"cmd":     string(cmd),
-	})
+	return string(result)
 }
 
 func uploadList(ctx *iris.Context) {
@@ -123,12 +129,18 @@ func getScreenshot(ctx *iris.Context) {
 	// time.Sleep(5 * time.Second)
 	conn, data, err := sendCommand(ip, "ScreenShot")
 	defer conn.Close()
-	data.Discard(17)
+	data.Discard(5)
+	var w int32
+	var h int32
+	var l int32
+	binary.Read(data, binary.BigEndian, &w)
+	binary.Read(data, binary.BigEndian, &h)
+	binary.Read(data, binary.BigEndian, &l)
 	archive, err := zlib.NewReader(data)
 	log.Println(archive, err)
 	defer archive.Close()
 	pixelsRaw, _ := ioutil.ReadAll(archive)
-	pixelsRaw = append([]byte{0}, pixelsRaw...)
+	// pixelsRaw = append([]byte{0}, pixelsRaw...)
 	log.Println(err)
 	go func() {
 		f, _ := os.OpenFile("dump.bin", os.O_WRONLY|os.O_CREATE, 0666)
@@ -141,13 +153,13 @@ func getScreenshot(ctx *iris.Context) {
 	for n, p := range pixelsRaw {
 		switch {
 		case i == 0:
-			pix[3] = p
-		case i == 1:
 			pix[2] = p
-		case i == 2:
+		case i == 1:
 			pix[1] = p
-		case i == 3:
+		case i == 2:
 			pix[0] = p
+		case i == 3:
+			pix[3] = p
 		}
 		if i == 3 {
 			i = 0
@@ -162,10 +174,11 @@ func getScreenshot(ctx *iris.Context) {
 	// log.Println(pixelsRaw[:4])
 	pixels := bytes.NewBuffer(pixelsRaw)
 
-	img := image.NewRGBA(image.Rect(0, 0, 720, 480))
+	img := image.NewRGBA(image.Rect(0, 0, int(w), int(h)))
 	copy(img.Pix, pixels.Bytes())
 	ret := new(bytes.Buffer)
-	jpeg.Encode(ret, img, nil)
+	jpeg.Encode(ret, img, &jpeg.Options{100})
+	// png.Encode(ret, img)
 	ctx.ServeContent(bytes.NewReader(ret.Bytes()), "screen.png", time.Now(), false)
 }
 
